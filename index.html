@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyScan OCR — WebRTC Image-to-Text Studio</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            sky: {
+              50: '#F0F9FF',
+              100: '#E0F2FE',
+              200: '#BAE6FD',
+              300: '#7DD3FC',
+              400: '#38BDF8',
+              500: '#0EA5E9',
+              600: '#0284C7',
+              700: '#0369A1',
+              800: '#075985',
+              900: '#0C4A6E',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Tesseract.js v5 (Client-Side OCR Engine) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- PeerJS v1.5 (Zero-Auth WebRTC DataChannel & Media Connection) -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body class="bg-sky-50 text-slate-800 font-sans min-h-screen flex flex-col selection:bg-sky-200 selection:text-sky-900">
+
+  <!-- Toast Notification Container (Replaces alert/confirm) -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none max-w-sm w-full px-4 sm:px-0"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="bg-white/95 backdrop-blur-md border-b border-sky-100 sticky top-0 z-30 shadow-sm shadow-sky-900/5">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand Identity -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20 shrink-0">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 12h10M9 8h6M9 16h6" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-800">SkyScan <span class="text-sky-600">OCR</span></h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-700 border border-sky-200">
+              No Login • 100% Local
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 hidden sm:block">WebRTC P2P Wireless Scanner &amp; Client-Side Optical Character Recognition</p>
+        </div>
+      </div>
+
+      <!-- Right Controls: WebRTC Status & Quick Actions -->
+      <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <!-- WebRTC Live Status Badge -->
+        <div id="webrtc-badge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200 transition-all">
+          <span id="webrtc-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="webrtc-status-text">Initializing P2P...</span>
+        </div>
+
+        <!-- Toggle WebRTC Sync Drawer Button -->
+        <button id="toggle-webrtc-panel-btn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-700 active:scale-[0.98] text-white shadow-sm shadow-sky-600/20 transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+          </svg>
+          <span>WebRTC Sync</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Collapsible WebRTC Peer-to-Peer Wireless Scanner Panel -->
+    <section id="webrtc-panel" class="bg-white rounded-2xl border border-sky-200 shadow-sm overflow-hidden transition-all">
+      <div class="bg-gradient-to-r from-sky-50 via-white to-sky-50 px-5 py-4 border-b border-sky-100 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold text-slate-800">WebRTC Instant Device Bridge (Phone ↔ Desktop)</h2>
+            <p class="text-xs text-slate-500">Pair two browsers directly via encrypted WebRTC DataChannels — stream camera scans or extracted text with zero account setup.</p>
+          </div>
+        </div>
+        <button id="close-webrtc-panel-btn" type="button" class="text-xs font-medium text-slate-400 hover:text-slate-600 px-2.5 py-1 rounded-lg hover:bg-sky-50 transition">
+          Hide Panel
+        </button>
+      </div>
+
+      <div class="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+        <!-- Your Peer Room ID -->
+        <div class="lg:col-span-5 bg-sky-50/70 rounded-xl p-4 border border-sky-100 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-sky-700">Your Device Room ID</span>
+            <span class="text-[11px] text-slate-500">Share with your phone</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="my-peer-id" type="text" readonly value="Generating..." class="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-sm font-mono font-semibold text-slate-800 focus:outline-none" />
+            <button id="copy-peer-id-btn" type="button" title="Copy Room ID" class="px-3 py-2 rounded-xl bg-white hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold transition shrink-0">
+              Copy ID
+            </button>
+            <button id="copy-peer-link-btn" type="button" title="Copy Direct Auto-Connect URL" class="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition shrink-0">
+              Copy Link
+            </button>
+          </div>
+        </div>
+
+        <!-- Connect to Remote Peer -->
+        <div class="lg:col-span-5 bg-sky-50/70 rounded-xl p-4 border border-sky-100 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-sky-700">Pair With Remote Device</span>
+            <span id="peer-connection-label" class="text-[11px] font-medium text-slate-500">Not paired</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="remote-peer-id-input" type="text" placeholder="Enter remote Room ID (e.g. SKY-4921)" class="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-sm font-mono text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400" />
+            <button id="connect-peer-btn" type="button" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition shrink-0">
+              Connect
+            </button>
+            <button id="disconnect-peer-btn" type="button" class="hidden px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold transition shrink-0">
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <!-- P2P Auto-Sync Controls -->
+        <div class="lg:col-span-2 flex flex-col justify-center gap-2">
+          <label class="flex items-center gap-2.5 cursor-pointer bg-white border border-sky-100 rounded-xl p-3 hover:border-sky-300 transition">
+            <input id="auto-send-peer-toggle" type="checkbox" checked class="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-sky-300" />
+            <span class="text-xs font-medium text-slate-700 leading-tight">Auto-push scans &amp; text to peer</span>
+          </label>
+          <button id="manual-push-peer-btn" type="button" disabled class="w-full py-2 px-3 rounded-xl text-xs font-semibold bg-sky-100 text-sky-700 hover:bg-sky-200 disabled:opacity-40 disabled:pointer-events-none transition">
+            Send Now to Peer ↗
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- OCR Control Toolbar -->
+    <section class="bg-white rounded-2xl border border-sky-100 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+      <!-- Left: Language & Sample -->
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2">
+          <label for="ocr-lang-select" class="text-xs font-semibold text-slate-600 uppercase tracking-wider">OCR Language:</label>
+          <select id="ocr-lang-select" class="bg-sky-50 border border-sky-200 text-slate-800 text-sm font-medium rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-400">
+            <option value="eng" selected>English (ENG)</option>
+            <option value="hin">Hindi (हिन्दी)</option>
+            <option value="eng+hin">English + Hindi (Multi)</option>
+            <option value="spa">Spanish (Español)</option>
+            <option value="fra">French (Français)</option>
+            <option value="deu">German (Deutsch)</option>
+            <option value="jpn">Japanese (日本語)</option>
+          </select>
+        </div>
+
+        <button id="load-sample-btn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition">
+          <svg class="w-4 h-4 text-sky-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span>Load Sample Receipt</span>
+        </button>
+      </div>
+
+      <!-- Right: Input Triggers & Run OCR -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button id="open-camera-btn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-sky-50 text-slate-700 border border-sky-200 shadow-sm transition">
+          <svg class="w-4 h-4 text-sky-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span>Camera Scan</span>
+        </button>
+
+        <button id="run-ocr-btn" type="button" disabled class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-700 disabled:bg-slate-200 disabled:text-slate-400 text-white shadow-sm shadow-sky-600/20 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <span>Extract Text</span>
+        </button>
+
+        <button id="clear-all-btn" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-200 transition">
+          <span>Clear</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Live OCR Progress Bar Banner -->
+    <section id="progress-container" class="hidden bg-white rounded-2xl border border-sky-200 p-4 shadow-sm space-y-2">
+      <div class="flex items-center justify-between text-xs font-semibold">
+        <span id="progress-status" class="text-sky-700 flex items-center gap-2">
+          <svg class="w-4 h-4 animate-spin text-sky-600" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+          </svg>
+          <span>Initializing OCR Engine...</span>
+        </span>
+        <span id="progress-percent" class="text-slate-600 font-mono">0%</span>
+      </div>
+      <div class="w-full bg-sky-100 rounded-full h-2.5 overflow-hidden">
+        <div id="progress-bar" class="bg-gradient-to-r from-sky-400 to-sky-600 h-2.5 rounded-full transition-all duration-200" style="width: 0%"></div>
+      </div>
+    </section>
+
+    <!-- Side-by-Side Dual Workspace: Left (Image Input & Preview) | Right (Extracted Text Editor) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+
+      <!-- LEFT PANEL: Image Dropzone, Webcam Stream & Interactive Canvas Preview -->
+      <section class="bg-white rounded-2xl border border-sky-100 shadow-sm flex flex-col overflow-hidden min-h-[460px]">
+        <!-- Panel Header -->
+        <div class="px-5 py-3.5 border-b border-sky-100 bg-sky-50/40 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+            <h3 class="text-sm font-bold text-slate-800">Source Image</h3>
+            <span id="image-dimensions-badge" class="hidden text-[11px] font-mono px-2 py-0.5 rounded-md bg-sky-100 text-sky-700">0 × 0</span>
+          </div>
+
+          <!-- Image Transform & Overlay Controls -->
+          <div id="image-tools" class="hidden flex items-center gap-1.5">
+            <button id="toggle-boxes-btn" type="button" title="Toggle Detected Word Bounding Boxes" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-100 text-sky-700 border border-sky-200 hover:bg-sky-200 transition">
+              Boxes: ON
+            </button>
+            <button id="rotate-left-btn" type="button" title="Rotate Left 90°" class="p-1.5 rounded-lg bg-white hover:bg-sky-50 text-slate-600 border border-sky-200 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+            </button>
+            <button id="rotate-right-btn" type="button" title="Rotate Right 90°" class="p-1.5 rounded-lg bg-white hover:bg-sky-50 text-slate-600 border border-sky-200 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+              </svg>
+            </button>
+            <button id="zoom-out-btn" type="button" title="Zoom Out" class="p-1.5 rounded-lg bg-white hover:bg-sky-50 text-slate-600 border border-sky-200 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+              </svg>
+            </button>
+            <button id="zoom-in-btn" type="button" title="Zoom In" class="p-1.5 rounded-lg bg-white hover:bg-sky-50 text-slate-600 border border-sky-200 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+              </svg>
+            </button>
+            <button id="replace-image-btn" type="button" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-white hover:bg-sky-50 text-slate-600 border border-sky-200 transition">
+              Change
+            </button>
+          </div>
+        </div>
+
+        <!-- Main Image Area -->
+        <div class="relative flex-1 flex flex-col items-center justify-center p-5 bg-sky-50/30">
+          <!-- Hidden File Input -->
+          <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" class="hidden" />
+
+          <!-- 1. Drag & Drop Zone (Default State) -->
+          <div id="dropzone" tabindex="0" role="button" aria-label="Upload or drop image" class="w-full h-full min-h-[360px] rounded-2xl border-2 border-dashed border-sky-300 bg-white hover:bg-sky-50/70 hover:border-sky-500 transition-all cursor-pointer flex flex-col items-center justify-center p-6 text-center group">
+            <div class="w-16 h-16 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-sm">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p class="text-base font-bold text-slate-800 mb-1">Drop an image here, or <span class="text-sky-600 underline decoration-sky-300 underline-offset-2">browse files</span></p>
+            <p class="text-xs text-slate-500 max-w-xs mb-4">Supports PNG, JPG, WEBP, BMP • Press <kbd class="px-1.5 py-0.5 text-[11px] font-semibold bg-sky-100 text-sky-800 rounded border border-sky-200">Ctrl+V</kbd> anywhere to paste screenshots</p>
+
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-sky-50 text-sky-700 border border-sky-200">
+                ⚡ Instant Browser OCR
+              </span>
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-sky-50 text-sky-700 border border-sky-200">
+                📡 WebRTC Ready
+              </span>
+            </div>
+          </div>
+
+          <!-- 2. WebRTC Live Camera Viewfinder (Hidden by default) -->
+          <div id="camera-view" class="hidden w-full h-full min-h-[360px] flex flex-col items-center justify-between gap-3">
+            <div class="relative w-full flex-1 bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center border border-sky-200 shadow-inner">
+              <video id="camera-video" autoplay playsinline muted class="w-full max-h-[360px] object-contain"></video>
+              <!-- Viewfinder Guide Frame -->
+              <div class="pointer-events-none absolute inset-6 border-2 border-sky-400/70 rounded-xl flex items-end justify-center pb-2">
+                <span class="bg-slate-900/70 text-sky-200 text-[11px] px-2.5 py-0.5 rounded-full backdrop-blur-sm">Align document or text inside frame</span>
+              </div>
+            </div>
+            <div class="flex items-center justify-center gap-3 w-full">
+              <button id="switch-camera-btn" type="button" class="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-sky-50 text-slate-700 border border-sky-200 transition">
+                Flip Camera
+              </button>
+              <button id="capture-photo-btn" type="button" class="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-600/25 flex items-center gap-2 transition">
+                <span class="w-3 h-3 rounded-full bg-white animate-pulse"></span>
+                <span>Capture &amp; Extract Text</span>
+              </button>
+              <button id="close-camera-btn" type="button" class="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Interactive Canvas Preview (Active when image loaded) -->
+          <div id="preview-wrapper" class="hidden w-full h-full min-h-[360px] max-h-[500px] overflow-auto rounded-xl bg-white border border-sky-100 flex items-center justify-center p-2">
+            <canvas id="preview-canvas" class="max-w-full h-auto rounded-lg shadow-sm transition-transform duration-150 origin-center"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT PANEL: Extracted Text Output & Productivity Controls -->
+      <section class="bg-white rounded-2xl border border-sky-100 shadow-sm flex flex-col overflow-hidden min-h-[460px]">
+        <!-- Panel Header -->
+        <div class="px-5 py-3.5 border-b border-sky-100 bg-sky-50/40 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <h3 class="text-sm font-bold text-slate-800">Extracted Text</h3>
+            <span id="confidence-badge" class="hidden text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Confidence: --%
+            </span>
+          </div>
+
+          <!-- Output Actions -->
+          <div class="flex items-center gap-2">
+            <button id="clean-whitespace-btn" type="button" title="Normalize extra line breaks & spaces" class="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-sky-50 text-slate-600 border border-sky-200 transition">
+              Tidy Text
+            </button>
+            <button id="copy-text-btn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white shadow-sm transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              <span>Copy Text</span>
+            </button>
+            <button id="download-txt-btn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>.TXT</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Editable Textarea -->
+        <div class="flex-1 flex flex-col p-4 bg-white">
+          <textarea id="ocr-output-textarea" placeholder="Recognized text will appear here automatically after uploading, pasting, or capturing an image...&#10;&#10;Tip: Connect a second device via WebRTC Sync above to beam photos from your phone camera straight into this workspace!" class="w-full flex-1 min-h-[340px] resize-none rounded-xl border border-sky-100 bg-sky-50/20 p-4 text-sm sm:text-base text-slate-800 leading-relaxed placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:bg-white transition"></textarea>
+        </div>
+
+        <!-- Footer Telemetry Bar -->
+        <div class="px-5 py-2.5 bg-sky-50/60 border-t border-sky-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
+          <div class="flex items-center gap-4">
+            <span>Words: <strong id="word-count" class="text-slate-700">0</strong></span>
+            <span>Characters: <strong id="char-count" class="text-slate-700">0</strong></span>
+          </div>
+          <span class="text-[11px] text-sky-700 font-medium">Privacy First: All OCR runs locally in your browser</span>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Minimal Footer -->
+  <footer class="bg-white border-t border-sky-100 py-4 px-4 sm:px-6 text-center text-xs text-slate-400">
+    SkyScan OCR Studio • Client-Side Tesseract.js &amp; WebRTC Peer-to-Peer Document Bridge • Zero Sign-Up Required
+  </footer>
+
+  <!-- Application Logic -->
+  <script>
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. STATE MANAGEMENT
+      // =========================================================================
+      const state = {
+        currentImage: null,       // HTMLImageElement of active source
+        rotation: 0,              // 0, 90, 180, 270
+        zoom: 1,                  // 0.5 to 2.5
+        showBoxes: true,          // Toggle OCR word bounding boxes
+        ocrWords: [],             // Array of word bounding boxes from Tesseract
+        isProcessing: false,      // OCR lock flag
+        cameraStream: null,       // Active MediaStream from getUserMedia
+        facingMode: 'environment',// Default rear camera on mobile
+        peer: null,               // PeerJS instance
+        conn: null,               // Active DataConnection
+        myPeerId: null,           // Local Peer ID
+      };
+
+      // =========================================================================
+      // 2. DOM ELEMENT REFERENCES
+      // =========================================================================
+      const els = {
+        // WebRTC UI
+        webrtcBadge: document.getElementById('webrtc-badge'),
+        webrtcDot: document.getElementById('webrtc-dot'),
+        webrtcStatusText: document.getElementById('webrtc-status-text'),
+        webrtcPanel: document.getElementById('webrtc-panel'),
+        toggleWebrtcPanelBtn: document.getElementById('toggle-webrtc-panel-btn'),
+        closeWebrtcPanelBtn: document.getElementById('close-webrtc-panel-btn'),
+        myPeerIdInput: document.getElementById('my-peer-id'),
+        copyPeerIdBtn: document.getElementById('copy-peer-id-btn'),
+        copyPeerLinkBtn: document.getElementById('copy-peer-link-btn'),
+        remotePeerIdInput: document.getElementById('remote-peer-id-input'),
+        connectPeerBtn: document.getElementById('connect-peer-btn'),
+        disconnectPeerBtn: document.getElementById('disconnect-peer-btn'),
+        peerConnectionLabel: document.getElementById('peer-connection-label'),
+        autoSendPeerToggle: document.getElementById('auto-send-peer-toggle'),
+        manualPushPeerBtn: document.getElementById('manual-push-peer-btn'),
+
+        // Toolbar & Progress
+        ocrLangSelect: document.getElementById('ocr-lang-select'),
+        loadSampleBtn: document.getElementById('load-sample-btn'),
+        openCameraBtn: document.getElementById('open-camera-btn'),
+        runOcrBtn: document.getElementById('run-ocr-btn'),
+        clearAllBtn: document.getElementById('clear-all-btn'),
+        progressContainer: document.getElementById('progress-container'),
+        progressStatus: document.getElementById('progress-status'),
+        progressPercent: document.getElementById('progress-percent'),
+        progressBar: document.getElementById('progress-bar'),
+
+        // Left Panel (Input & Canvas)
+        fileInput: document.getElementById('file-input'),
+        dropzone: document.getElementById('dropzone'),
+        cameraView: document.getElementById('camera-view'),
+        cameraVideo: document.getElementById('camera-video'),
+        switchCameraBtn: document.getElementById('switch-camera-btn'),
+        capturePhotoBtn: document.getElementById('capture-photo-btn'),
+        closeCameraBtn: document.getElementById('close-camera-btn'),
+        previewWrapper: document.getElementById('preview-wrapper'),
+        previewCanvas: document.getElementById('preview-canvas'),
+        imageDimensionsBadge: document.getElementById('image-dimensions-badge'),
+        imageTools: document.getElementById('image-tools'),
+        toggleBoxesBtn: document.getElementById('toggle-boxes-btn'),
+        rotateLeftBtn: document.getElementById('rotate-left-btn'),
+        rotateRightBtn: document.getElementById('rotate-right-btn'),
+        zoomOutBtn: document.getElementById('zoom-out-btn'),
+        zoomInBtn: document.getElementById('zoom-in-btn'),
+        replaceImageBtn: document.getElementById('replace-image-btn'),
+
+        // Right Panel (Text Output)
+        confidenceBadge: document.getElementById('confidence-badge'),
+        cleanWhitespaceBtn: document.getElementById('clean-whitespace-btn'),
+        copyTextBtn: document.getElementById('copy-text-btn'),
+        downloadTxtBtn: document.getElementById('download-txt-btn'),
+        ocrOutputTextarea: document.getElementById('ocr-output-textarea'),
+        wordCount: document.getElementById('word-count'),
+        charCount: document.getElementById('char-count'),
+      };
+
+      // =========================================================================
+      // 3. TOAST NOTIFICATION & CLIPBOARD HELPERS (NO ALERT/CONFIRM)
+      // =========================================================================
+      function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+
+        const styles = {
+          info: 'bg-white border-sky-200 text-slate-800 shadow-sky-900/10',
+          success: 'bg-white border-emerald-200 text-emerald-900 shadow-emerald-900/10',
+          warning: 'bg-white border-amber-200 text-amber-900 shadow-amber-900/10',
+          error: 'bg-white border-rose-200 text-rose-900 shadow-rose-900/10',
+        };
+
+        const dotColors = {
+          info: 'bg-sky-500',
+          success: 'bg-emerald-500',
+          warning: 'bg-amber-500',
+          error: 'bg-rose-500',
+        };
+
+        toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl border shadow-lg text-xs sm:text-sm font-medium transition-all duration-300 transform translate-y-2 opacity-0 ${styles[type] || styles.info}`;
+        toast.innerHTML = `
+          <span class="w-2 h-2 rounded-full shrink-0 ${dotColors[type] || dotColors.info}"></span>
+          <span class="flex-1">${escapeHtml(message)}</span>
+        `;
+
+        container.appendChild(toast);
+        requestAnimationFrame(() => {
+          toast.classList.remove('translate-y-2', 'opacity-0');
+        });
+
+        setTimeout(() => {
+          toast.classList.add('translate-y-2', 'opacity-0');
+          setTimeout(() => toast.remove(), 300);
+        }, 3400);
+      }
+
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      // Reliable copy helper using execCommand fallback for iFrame environments
+      function copyToClipboard(text, successMsg) {
+        if (!text) {
+          showToast('Nothing to copy yet.', 'warning');
+          return;
+        }
+        const tempInput = document.createElement('textarea');
+        tempInput.value = text;
+        tempInput.style.position = 'fixed';
+        tempInput.style.opacity = '0';
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try {
+          document.execCommand('copy');
+          showToast(successMsg, 'success');
+        } catch (err) {
+          showToast('Copy failed. Please select and copy manually.', 'error');
+        }
+        document.body.removeChild(tempInput);
+      }
+
+      // =========================================================================
+      // 4. IMAGE LOADING, CANVAS RENDERING & TRANSFORMATIONS
+      // =========================================================================
+      function loadImageFromDataURL(dataUrl, autoRunOcr = true, fromRemotePeer = false) {
+        stopCameraStream();
+        const img = new Image();
+        img.onload = () => {
+          state.currentImage = img;
+          state.rotation = 0;
+          state.zoom = 1;
+          state.ocrWords = [];
+
+          els.dropzone.classList.add('hidden');
+          els.cameraView.classList.add('hidden');
+          els.previewWrapper.classList.remove('hidden');
+          els.imageTools.classList.remove('hidden');
+          els.runOcrBtn.disabled = false;
+
+          renderCanvas();
+
+          if (!fromRemotePeer && state.conn && state.conn.open && els.autoSendPeerToggle.checked) {
+            sendImageToPeer(dataUrl);
+          }
+
+          if (autoRunOcr) {
+            runOCR();
+          }
+        };
+        img.onerror = () => {
+          showToast('Could not load the selected image file.', 'error');
+        };
+        img.src = dataUrl;
+      }
+
+      function handleFileObject(file) {
+        if (!file || !file.type.startsWith('image/')) {
+          showToast('Please select a valid image (PNG, JPG, WEBP, BMP).', 'warning');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => loadImageFromDataURL(e.target.result, true, false);
+        reader.readAsDataURL(file);
+      }
+
+      // Renders image onto the canvas with current rotation, zoom, and optional bounding boxes
+      function renderCanvas() {
+        if (!state.currentImage) return;
+
+        const canvas = els.previewCanvas;
+        const ctx = canvas.getContext('2d');
+        const img = state.currentImage;
+
+        const isRotatedSideways = state.rotation === 90 || state.rotation === 270;
+        const targetWidth = isRotatedSideways ? img.height : img.width;
+        const targetHeight = isRotatedSideways ? img.width : img.height;
+
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        els.imageDimensionsBadge.textContent = `${targetWidth} × ${targetHeight}`;
+        els.imageDimensionsBadge.classList.remove('hidden');
+
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((state.rotation * Math.PI) / 180);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        ctx.restore();
+
+        // Draw Sky-Blue bounding boxes over recognized words when rotation is 0
+        if (state.showBoxes && state.ocrWords.length > 0 && state.rotation === 0) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(14, 165, 233, 0.85)';
+          ctx.fillStyle = 'rgba(14, 165, 233, 0.12)';
+          ctx.lineWidth = Math.max(1.5, targetWidth / 450);
+
+          state.ocrWords.forEach((w) => {
+            if (w.bbox) {
+              const { x0, y0, x1, y1 } = w.bbox;
+              ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+              ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+            }
+          });
+          ctx.restore();
+        }
+
+        canvas.style.transform = `scale(${state.zoom})`;
+      }
+
+      // =========================================================================
+      // 5. CLIENT-SIDE OCR ENGINE (TESSERACT.JS)
+      // =========================================================================
+      async function runOCR() {
+        if (!state.currentImage || state.isProcessing) return;
+
+        state.isProcessing = true;
+        state.ocrWords = [];
+        renderCanvas();
+
+        const lang = els.ocrLangSelect.value;
+        els.runOcrBtn.disabled = true;
+        els.progressContainer.classList.remove('hidden');
+        updateProgress('Preparing Tesseract OCR engine...', 5);
+
+        try {
+          // Export current rotated canvas state as image data for OCR
+          const imageDataUrl = els.previewCanvas.toDataURL('image/png');
+
+          const worker = await Tesseract.createWorker(lang, 1, {
+            logger: (m) => {
+              if (m.status) {
+                const pct = m.progress ? Math.round(m.progress * 100) : 15;
+                const readableStatus = m.status.charAt(0).toUpperCase() + m.status.slice(1);
+                updateProgress(`${readableStatus}...`, pct);
+              }
+            },
+          });
+
+          const result = await worker.recognize(imageDataUrl);
+          await worker.terminate();
+
+          const extractedText = (result.data.text || '').trim();
+          const confidence = Math.round(result.data.confidence || 0);
+
+          els.ocrOutputTextarea.value = extractedText;
+          updateTextTelemetry();
+
+          if (confidence > 0) {
+            els.confidenceBadge.textContent = `Confidence: ${confidence}%`;
+            els.confidenceBadge.classList.remove('hidden');
+          }
+
+          // Store word bounding boxes if unrotated
+          if (state.rotation === 0 && Array.isArray(result.data.words)) {
+            state.ocrWords = result.data.words;
+            renderCanvas();
+          }
+
+          updateProgress('OCR Complete!', 100);
+          showToast(`Text extracted (${confidence}% confidence)`, 'success');
+
+          // Sync extracted text to connected WebRTC peer if enabled
+          if (state.conn && state.conn.open && els.autoSendPeerToggle.checked) {
+            sendTextToPeer(extractedText, confidence);
+          }
+        } catch (err) {
+          console.error('OCR Error:', err);
+          showToast('OCR encountered an error. Try a clearer image or different language.', 'error');
+        } finally {
+          state.isProcessing = false;
+          els.runOcrBtn.disabled = false;
+          setTimeout(() => {
+            els.progressContainer.classList.add('hidden');
+          }, 1200);
+        }
+      }
+
+      function updateProgress(label, percent) {
+        els.progressStatus.querySelector('span').textContent = label;
+        els.progressPercent.textContent = `${percent}%`;
+        els.progressBar.style.width = `${percent}%`;
+      }
+
+      // =========================================================================
+      // 6. WEBRTC LOCAL CAMERA STREAM (getUserMedia)
+      // =========================================================================
+      async function startCameraStream() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          showToast('Camera API is not supported in this browser or context.', 'error');
+          return;
+        }
+
+        stopCameraStream();
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: state.facingMode,
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            },
+            audio: false,
+          });
+
+          state.cameraStream = stream;
+          els.cameraVideo.srcObject = stream;
+
+          els.dropzone.classList.add('hidden');
+          els.previewWrapper.classList.add('hidden');
+          els.imageTools.classList.add('hidden');
+          els.cameraView.classList.remove('hidden');
+        } catch (err) {
+          console.error('Camera access error:', err);
+          showToast('Unable to access camera. Check browser permissions.', 'error');
+        }
+      }
+
+      function stopCameraStream() {
+        if (state.cameraStream) {
+          state.cameraStream.getTracks().forEach((track) => track.stop());
+          state.cameraStream = null;
+        }
+        els.cameraVideo.srcObject = null;
+      }
+
+      function capturePhotoFromCamera() {
+        const video = els.cameraVideo;
+        if (!video.videoWidth || !video.videoHeight) {
+          showToast('Camera feed not ready yet.', 'warning');
+          return;
+        }
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.92);
+        loadImageFromDataURL(dataUrl, true, false);
+        showToast('Photo captured! Running OCR...', 'info');
+      }
+
+      // =========================================================================
+      // 7. WEBRTC PEER-TO-PEER BRIDGE (PEERJS - ZERO LOGIN)
+      // =========================================================================
+      function initWebRTCPeer() {
+        if (typeof Peer === 'undefined') {
+          setWebRTCStatus('offline', 'WebRTC Offline');
+          return;
+        }
+
+        // Generate clean, human-friendly short Room ID
+        const randomCode = Math.floor(1000 + Math.random() * 9000);
+        const customId = `SKY-${randomCode}`;
+
+        const peer = new Peer(customId, {
+          debug: 0,
+        });
+
+        state.peer = peer;
+
+        peer.on('open', (id) => {
+          state.myPeerId = id;
+          els.myPeerIdInput.value = id;
+          setWebRTCStatus('ready', `Ready • ${id}`);
+
+          // Auto-connect if URL contains ?pair=SKY-XXXX
+          const urlParams = new URLSearchParams(window.location.search);
+          const pairTarget = urlParams.get('pair');
+          if (pairTarget && pairTarget !== id) {
+            els.remotePeerIdInput.value = pairTarget;
+            els.webrtcPanel.classList.remove('hidden');
+            connectToRemotePeer(pairTarget);
+          }
+        });
+
+        peer.on('connection', (incomingConn) => {
+          setupDataConnection(incomingConn);
+          showToast(`Device paired: ${incomingConn.peer}`, 'success');
+        });
+
+        peer.on('error', (err) => {
+          console.warn('PeerJS notice:', err.type);
+          if (err.type === 'peer-unavailable') {
+            showToast('Remote Room ID not found. Verify the ID on the other device.', 'error');
+            setWebRTCStatus('ready', `Ready • ${state.myPeerId || 'P2P'}`);
+          } else if (err.type === 'unavailable-id') {
+            // Retry with fallback UUID
+            peer.destroy();
+            state.peer = new Peer();
+          }
+        });
+      }
+
+      function connectToRemotePeer(targetId) {
+        const cleanId = (targetId || '').trim().toUpperCase();
+        if (!cleanId) {
+          showToast('Enter a valid Remote Room ID first.', 'warning');
+          return;
+        }
+        if (cleanId === state.myPeerId) {
+          showToast('Cannot pair a device with its own Room ID.', 'warning');
+          return;
+        }
+        if (!state.peer) return;
+
+        setWebRTCStatus('connecting', 'Connecting P2P...');
+        const conn = state.peer.connect(cleanId, { reliable: true });
+        setupDataConnection(conn);
+      }
+
+      function setupDataConnection(conn) {
+        if (state.conn && state.conn.open) {
+          state.conn.close();
+        }
+        state.conn = conn;
+
+        conn.on('open', () => {
+          setWebRTCStatus('connected', `Paired: ${conn.peer}`);
+          els.peerConnectionLabel.textContent = `Connected to ${conn.peer}`;
+          els.peerConnectionLabel.className = 'text-[11px] font-semibold text-emerald-600';
+          els.remotePeerIdInput.value = conn.peer;
+          els.connectPeerBtn.classList.add('hidden');
+          els.disconnectPeerBtn.classList.remove('hidden');
+          els.manualPushPeerBtn.disabled = false;
+        });
+
+        conn.on('data', (payload) => {
+          if (!payload || typeof payload !== 'object') return;
+
+          if (payload.type === 'sync-image' && payload.imageDataUrl) {
+            setWebRTCStatus('incoming', 'Receiving Scan...');
+            showToast(`Incoming scan received from ${conn.peer}!`, 'info');
+            loadImageFromDataURL(payload.imageDataUrl, true, true);
+            setTimeout(() => {
+              if (state.conn && state.conn.open) {
+                setWebRTCStatus('connected', `Paired: ${conn.peer}`);
+              }
+            }, 1500);
+          } else if (payload.type === 'sync-text') {
+            els.ocrOutputTextarea.value = payload.text || '';
+            updateTextTelemetry();
+            if (payload.confidence) {
+              els.confidenceBadge.textContent = `Confidence: ${payload.confidence}%`;
+              els.confidenceBadge.classList.remove('hidden');
+            }
+            showToast(`Synced extracted text from ${conn.peer}`, 'success');
+          }
+        });
+
+        conn.on('close', () => {
+          handlePeerDisconnected();
+          showToast('WebRTC peer disconnected.', 'warning');
+        });
+
+        conn.on('error', () => {
+          handlePeerDisconnected();
+        });
+      }
+
+      function handlePeerDisconnected() {
+        state.conn = null;
+        setWebRTCStatus('ready', `Ready • ${state.myPeerId || 'P2P'}`);
+        els.peerConnectionLabel.textContent = 'Not paired';
+        els.peerConnectionLabel.className = 'text-[11px] font-medium text-slate-500';
+        els.connectPeerBtn.classList.remove('hidden');
+        els.disconnectPeerBtn.classList.add('hidden');
+        els.manualPushPeerBtn.disabled = true;
+      }
+
+      function sendImageToPeer(dataUrl) {
+        if (!state.conn || !state.conn.open) return;
+        try {
+          state.conn.send({
+            type: 'sync-image',
+            imageDataUrl: dataUrl,
+            timestamp: Date.now(),
+          });
+        } catch (e) {
+          console.warn('Failed to send image over WebRTC:', e);
+        }
+      }
+
+      function sendTextToPeer(text, confidence = null) {
+        if (!state.conn || !state.conn.open) return;
+        try {
+          state.conn.send({
+            type: 'sync-text',
+            text,
+            confidence,
+            timestamp: Date.now(),
+          });
+        } catch (e) {
+          console.warn('Failed to send text over WebRTC:', e);
+        }
+      }
+
+      function setWebRTCStatus(mode, text) {
+        els.webrtcStatusText.textContent = text;
+        const dotStyles = {
+          ready: 'bg-sky-500',
+          connecting: 'bg-amber-400 animate-pulse',
+          connected: 'bg-emerald-500',
+          incoming: 'bg-sky-400 animate-ping',
+          offline: 'bg-slate-400',
+        };
+        els.webrtcDot.className = `w-2 h-2 rounded-full ${dotStyles[mode] || dotStyles.ready}`;
+      }
+
+      // =========================================================================
+      // 8. BUILT-IN SAMPLE DOCUMENT GENERATOR (HTML5 CANVAS)
+      // =========================================================================
+      function generateSampleReceipt() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 760;
+        canvas.height = 540;
+        const ctx = canvas.getContext('2d');
+
+        // Crisp white receipt background with subtle sky header accent
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#F0F9FF';
+        ctx.fillRect(24, 24, canvas.width - 48, 96);
+
+        ctx.strokeStyle = '#BAE6FD';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
+
+        // Receipt Typography
+        ctx.fillStyle = '#0284C7';
+        ctx.font = 'bold 28px Inter, Arial, sans-serif';
+        ctx.fillText('SKYLINE CLOUD COFFEE & ROASTERS', 50, 74);
+
+        ctx.fillStyle = '#475569';
+        ctx.font = '16px Inter, Arial, sans-serif';
+        ctx.fillText('Invoice #INV-2026-8841   |   Date: Nov 20, 2026', 50, 104);
+
+        ctx.fillStyle = '#1E293B';
+        ctx.font = 'bold 18px Courier New, monospace';
+        const lines = [
+          'ITEM                         QTY       AMOUNT',
+          '---------------------------------------------',
+          '1. Iced Vanilla Cloud Latte   2        $11.50',
+          '2. Artisan Sourdough Toast    1         $7.25',
+          '3. Sparkling Mineral Water    2         $6.00',
+          '---------------------------------------------',
+          'SUBTOTAL:                              $24.75',
+          'TAX (8%):                               $1.98',
+          'TOTAL DUE:                             $26.73',
+          '',
+          'Thank you for scanning with SkyScan OCR!',
+        ];
+
+        let y = 168;
+        lines.forEach((line, idx) => {
+          if (idx === 8) {
+            ctx.fillStyle = '#0369A1';
+            ctx.font = 'bold 20px Courier New, monospace';
+          } else {
+            ctx.fillStyle = '#1E293B';
+            ctx.font = '18px Courier New, monospace';
+          }
+          ctx.fillText(line, 50, y);
+          y += 32;
+        });
+
+        loadImageFromDataURL(canvas.toDataURL('image/png'), true, false);
+      }
+
+      // =========================================================================
+      // 9. TEXT TELEMETRY & PRODUCTIVITY ACTIONS
+      // =========================================================================
+      function updateTextTelemetry() {
+        const text = els.ocrOutputTextarea.value;
+        const trimmed = text.trim();
+        const words = trimmed ? trimmed.split(/\s+/).length : 0;
+        els.wordCount.textContent = words;
+        els.charCount.textContent = text.length;
+      }
+
+      function normalizeWhitespace() {
+        const current = els.ocrOutputTextarea.value;
+        if (!current.trim()) return;
+        const cleaned = current
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        els.ocrOutputTextarea.value = cleaned;
+        updateTextTelemetry();
+        showToast('Normalized spacing and line breaks.', 'info');
+      }
+
+      function downloadAsTxt() {
+        const text = els.ocrOutputTextarea.value;
+        if (!text.trim()) {
+          showToast('No extracted text available to download.', 'warning');
+          return;
+        }
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SkyScan-OCR-${new Date().toISOString().slice(0, 10)}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Downloaded extracted text file (.txt)', 'success');
+      }
+
+      function clearWorkspace() {
+        stopCameraStream();
+        state.currentImage = null;
+        state.rotation = 0;
+        state.zoom = 1;
+        state.ocrWords = [];
+
+        els.fileInput.value = '';
+        els.ocrOutputTextarea.value = '';
+        updateTextTelemetry();
+
+        els.previewWrapper.classList.add('hidden');
+        els.cameraView.classList.add('hidden');
+        els.imageTools.classList.add('hidden');
+        els.imageDimensionsBadge.classList.add('hidden');
+        els.confidenceBadge.classList.add('hidden');
+        els.dropzone.classList.remove('hidden');
+        els.runOcrBtn.disabled = true;
+
+        showToast('Workspace cleared.', 'info');
+      }
+
+      // =========================================================================
+      // 10. EVENT LISTENERS
+      // =========================================================================
+      // Dropzone & File Selection
+      els.dropzone.addEventListener('click', () => els.fileInput.click());
+      els.replaceImageBtn.addEventListener('click', () => els.fileInput.click());
+      els.fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleFileObject(e.target.files[0]);
+        }
+      });
+
+      els.dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        els.dropzone.classList.add('border-sky-500', 'bg-sky-50');
+      });
+
+      els.dropzone.addEventListener('dragleave', () => {
+        els.dropzone.classList.remove('border-sky-500', 'bg-sky-50');
+      });
+
+      els.dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        els.dropzone.classList.remove('border-sky-500', 'bg-sky-50');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleFileObject(e.dataTransfer.files[0]);
+        }
+      });
+
+      // Global Clipboard Paste (Ctrl+V / Cmd+V)
+      window.addEventListener('paste', (e) => {
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            const blob = items[i].getAsFile();
+            handleFileObject(blob);
+            showToast('Pasted image from clipboard!', 'info');
+            break;
+          }
+        }
+      });
+
+      // Camera Controls
+      els.openCameraBtn.addEventListener('click', startCameraStream);
+      els.closeCameraBtn.addEventListener('click', () => {
+        stopCameraStream();
+        els.cameraView.classList.add('hidden');
+        if (state.currentImage) {
+          els.previewWrapper.classList.remove('hidden');
+          els.imageTools.classList.remove('hidden');
+        } else {
+          els.dropzone.classList.remove('hidden');
+        }
+      });
+      els.switchCameraBtn.addEventListener('click', () => {
+        state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+        startCameraStream();
+      });
+      els.capturePhotoBtn.addEventListener('click', capturePhotoFromCamera);
+
+      // Canvas Transform & Box Controls
+      els.toggleBoxesBtn.addEventListener('click', () => {
+        state.showBoxes = !state.showBoxes;
+        els.toggleBoxesBtn.textContent = `Boxes: ${state.showBoxes ? 'ON' : 'OFF'}`;
+        renderCanvas();
+      });
+      els.rotateLeftBtn.addEventListener('click', () => {
+        state.rotation = (state.rotation + 270) % 360;
+        renderCanvas();
+      });
+      els.rotateRightBtn.addEventListener('click', () => {
+        state.rotation = (state.rotation + 90) % 360;
+        renderCanvas();
+      });
+      els.zoomInBtn.addEventListener('click', () => {
+        state.zoom = Math.min(2.5, +(state.zoom + 0.25).toFixed(2));
+        renderCanvas();
+      });
+      els.zoomOutBtn.addEventListener('click', () => {
+        state.zoom = Math.max(0.5, +(state.zoom - 0.25).toFixed(2));
+        renderCanvas();
+      });
+
+      // OCR & Toolbar Buttons
+      els.runOcrBtn.addEventListener('click', runOCR);
+      els.loadSampleBtn.addEventListener('click', generateSampleReceipt);
+      els.clearAllBtn.addEventListener('click', clearWorkspace);
+
+      // Output Panel Buttons
+      els.ocrOutputTextarea.addEventListener('input', updateTextTelemetry);
+      els.cleanWhitespaceBtn.addEventListener('click', normalizeWhitespace);
+      els.copyTextBtn.addEventListener('click', () => {
+        copyToClipboard(els.ocrOutputTextarea.value, 'Extracted text copied to clipboard!');
+      });
+      els.downloadTxtBtn.addEventListener('click', downloadAsTxt);
+
+      // WebRTC Panel Controls
+      els.toggleWebrtcPanelBtn.addEventListener('click', () => {
+        els.webrtcPanel.classList.toggle('hidden');
+      });
+      els.closeWebrtcPanelBtn.addEventListener('click', () => {
+        els.webrtcPanel.classList.add('hidden');
+      });
+      els.copyPeerIdBtn.addEventListener('click', () => {
+        copyToClipboard(els.myPeerIdInput.value, 'Room ID copied!');
+      });
+      els.copyPeerLinkBtn.addEventListener('click', () => {
+        const shareUrl = `${window.location.origin}${window.location.pathname}?pair=${encodeURIComponent(state.myPeerId || '')}`;
+        copyToClipboard(shareUrl, 'Direct WebRTC pairing link copied!');
+      });
+      els.connectPeerBtn.addEventListener('click', () => {
+        connectToRemotePeer(els.remotePeerIdInput.value);
+      });
+      els.remotePeerIdInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') connectToRemotePeer(els.remotePeerIdInput.value);
+      });
+      els.disconnectPeerBtn.addEventListener('click', () => {
+        if (state.conn) state.conn.close();
+        handlePeerDisconnected();
+      });
+      els.manualPushPeerBtn.addEventListener('click', () => {
+        if (!state.conn || !state.conn.open) return;
+        if (state.currentImage) {
+          sendImageToPeer(els.previewCanvas.toDataURL('image/jpeg', 0.9));
+        }
+        if (els.ocrOutputTextarea.value.trim()) {
+          sendTextToPeer(els.ocrOutputTextarea.value);
+        }
+        showToast('Sent current scan & text to paired device!', 'success');
+      });
+
+      // Initialize WebRTC Peer on Load
+      window.addEventListener('load', () => {
+        initWebRTCPeer();
+      });
+    })();
+  </script>
+</body>
+</html>
